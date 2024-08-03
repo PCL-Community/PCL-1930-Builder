@@ -2,15 +2,19 @@
 Markdown 文件。
 """
 
+import functools
 import re
-from typing import Never, Optional
-from modules.base import debug
-
-import json
-import time
-from enum import Enum
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import markdown
+import requests
+from tqdm import tqdm
+from urllib3.exceptions import InsecureRequestWarning
+
+from modules.args import args
+from modules.base import debug
+from modules.ref_parser import RefParser
 
 CATEGORY = {
     "Minecraft": "Minecraft 常见问题",
@@ -125,7 +129,8 @@ class Markdown:
         转为 Json 文件。
         """
         table = {}
-        for line in self:
+        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+        for line in tqdm(iter(self), desc="正在解析 Markdown") if not args.debug else self:
             debug(f"加载的 Markdown 表格行：{line}")
             if not line:
                 continue
@@ -133,13 +138,19 @@ class Markdown:
                 continue
             if self.category not in table or table[self.category] is None:
                 table[self.category] = []
-            table[self.category].append(
-                {
-                    "catg": self.category,
-                    "title": re.sub(r"<.*?>", "", line[0]),  # 去除格式
-                    "q": line[0],
-                    "a": line[1] if len(line) > 1 else "",
-                    "ref": line[2] if len(line) > 2 else "",
-                }
-            )
+            with ThreadPoolExecutor(max_workers=15) as executor:
+                executor.submit(
+                    functools.partial(
+                        table[self.category].append,
+                        {
+                            "catg": self.category,
+                            "title": re.sub(r"<.*?>", "", line[0]),  # 去除格式
+                            "q": line[0],
+                            "a": line[1] if len(line) > 1 else "",
+                            "ref": RefParser(
+                                line[2] if len(line) > 2 and line[2] else ""
+                            ).parse(),
+                        },
+                    )
+                )
         return table
