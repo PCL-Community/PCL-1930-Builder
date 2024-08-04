@@ -2,7 +2,6 @@
 Markdown 文件。
 """
 
-import functools
 import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional

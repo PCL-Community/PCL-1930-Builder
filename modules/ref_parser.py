@@ -7,10 +7,9 @@
 from dataclasses import dataclass
 from enum import Enum
 from typing import Union, overload
-import markdown
-import requests
 
-from modules.args import args
+from requests import Response
+
 from modules.base import debug
 from modules.network import get
 
@@ -47,14 +46,15 @@ class Ref:
     @overload
     def __init__(self, ref_type: TYPE, num: str) -> None: ...
     @overload
-    def __init__(self, ref_type: str, num: str) -> None: ...
-    def __init__(self, ref_type: Union[TYPE, str], num: str) -> None:
+    def __init__(self, ref_type: Response, num: str) -> None: ...
+    def __init__(self, ref_type: Union[TYPE, Response], num: str) -> None:
         if isinstance(ref_type, TYPE):
             self.ref_type = ref_type
-        elif "pull" in ref_type:
-            self.ref_type = TYPE.PR
-        elif "discussions" in ref_type:
-            self.ref_type = TYPE.DISCUSSION
+        elif ref_type.is_redirect:
+            if "discussion" in ref_type.headers["Location"]:
+                self.ref_type = TYPE.DISCUSSION
+            elif "pull" in ref_type.headers["Location"]:
+                self.ref_type = TYPE.PR
         else:
             self.ref_type = TYPE.ISSUE
         self.num = num
@@ -88,7 +88,7 @@ class RefParser:
                 resp = get(
                     f"https://github.com/Hex-Dragon/PCL2/issues/{num}", timeout=10
                 )  # 傻逼 GitHub 请求 pr 的时候会先 302 到 issue 再到 discussion
-                yield Ref(resp.url, f"#{num}")
+                yield Ref(resp, f"#{num}")
                 num = ""
                 well = False
                 continue
