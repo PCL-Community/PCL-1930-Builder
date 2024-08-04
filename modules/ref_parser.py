@@ -6,11 +6,13 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Union, overload
 import markdown
 import requests
 
 from modules.args import args
 from modules.base import debug
+from modules.network import get
 
 
 def link2html(link: str) -> str:
@@ -42,8 +44,19 @@ class Ref:
     num: str
     """引用编号。"""
 
-    def __init__(self, ref_type: TYPE, num: str) -> None:
-        self.ref_type = ref_type
+    @overload
+    def __init__(self, ref_type: TYPE, num: str) -> None: ...
+    @overload
+    def __init__(self, ref_type: str, num: str) -> None: ...
+    def __init__(self, ref_type: Union[TYPE, str], num: str) -> None:
+        if isinstance(ref_type, TYPE):
+            self.ref_type = ref_type
+        elif "pull" in ref_type:
+            self.ref_type = TYPE.PR
+        elif "discussions" in ref_type:
+            self.ref_type = TYPE.DISCUSSION
+        else:
+            self.ref_type = TYPE.ISSUE
         self.num = num
 
 
@@ -57,7 +70,6 @@ class RefParser:
 
     def __init__(self, text: str) -> None:
         self.text = text
-        self.parse()
 
     def iter_ref(self):
         """
@@ -73,18 +85,10 @@ class RefParser:
                     num += b
                     continue
                 # 一个编号寻找完成，判断类型
-                resp = requests.get(
-                    f"https://github.com/Hex-Dragon/PCL2/issues/{num}",
-                    timeout=10,  # 傻逼 GitHub 请求 pr 的时候会先 302 到 issue 再到 discussion
-                    verify=not args.ssl_no_revoke,
-                )
-                if resp.is_redirect:
-                    if "pull" in (h := resp.headers["Location"]):
-                        yield Ref(TYPE.PR, f"#{num}")
-                    elif "discussions" in h:
-                        yield Ref(TYPE.DISCUSSION, f"#{num}")
-                else:
-                    yield Ref(TYPE.ISSUE, f"#{num}")
+                resp = get(
+                    f"https://github.com/Hex-Dragon/PCL2/issues/{num}", timeout=10
+                )  # 傻逼 GitHub 请求 pr 的时候会先 302 到 issue 再到 discussion
+                yield Ref(resp.url, f"#{num}")
                 num = ""
                 well = False
                 continue
