@@ -14,11 +14,14 @@ from modules.base import debug
 from modules.network import get
 
 
-def link2html(link: str) -> str:
+def link2json(link: str) -> dict:
     """
-    将 Markdown 链接转换为 HTML 链接。
+    将 Markdown 链接转换为 Json。
     """
-    return f'<a href="{link[link.index("(")+1:link.index(")")]}">{link[link.index("[")+1:link.index("]")]}</a>'
+    return {
+        "text": link[link.index("[") + 1 : link.index("]")],
+        "link": link[link.index("(") + 1 : link.index(")")],
+    }
 
 
 class TYPE(Enum):
@@ -40,16 +43,27 @@ class Ref:
 
     ref_type: TYPE
     """引用类型。"""
-    num: str
-    """引用编号。"""
+    value: Union[str, dict]
+    """引用的相关数据。"""
 
     @overload
-    def __init__(self, ref_type: TYPE, num: str) -> None: ...
+    def __init__(self, ref_type: TYPE, value: dict[str, str]) -> None: ...
     @overload
-    def __init__(self, ref_type: Response, num: str) -> None: ...
-    def __init__(self, ref_type: Union[TYPE, Response], num: str) -> None:
+    def __init__(self, ref_type: Response, value: str) -> None: ...
+    def __init__(
+        self, ref_type: Union[TYPE, Response], value: Union[str, dict[str, str]]
+    ) -> None:
         if isinstance(ref_type, TYPE):
             self.ref_type = ref_type
+            if (
+                isinstance(value, dict)
+                and value["text"].startswith("#")
+                and value["text"][1:].isdigit()
+            ):
+                resp = get(
+                    f"https://github.com/Hex-Dragon/PCL2/issues/{value["text"][1:]}", timeout=10
+                )
+                self.__init__(resp, value["text"])
         elif ref_type.is_redirect:
             if "discussion" in ref_type.headers["Location"]:
                 self.ref_type = TYPE.DISCUSSION
@@ -57,7 +71,7 @@ class Ref:
                 self.ref_type = TYPE.PR
         else:
             self.ref_type = TYPE.ISSUE
-        self.num = num
+        self.value = value
 
 
 class RefParser:
@@ -96,7 +110,7 @@ class RefParser:
                 link += b
                 if b != ")":
                     continue
-                yield Ref(TYPE.LINK, link2html(link))
+                yield Ref(TYPE.LINK, link2json(link))
                 square = False
                 link = ""
                 continue
@@ -122,14 +136,14 @@ class RefParser:
             "link": [],
         }
         for ref in self.iter_ref():
-            debug(f"{ref.ref_type.name}   {ref.num}")
+            debug(f"{ref.ref_type.name}   {ref.value}")
             match ref.ref_type:
                 case TYPE.ISSUE:
-                    result["issue"].append(ref.num)
+                    result["issue"].append(ref.value)
                 case TYPE.PR:
-                    result["pull"].append(ref.num)
+                    result["pull"].append(ref.value)
                 case TYPE.DISCUSSION:
-                    result["disc"].append(ref.num)
+                    result["disc"].append(ref.value)
                 case TYPE.LINK:
-                    result["link"].append(ref.num)
+                    result["link"].append(ref.value)
         return result
