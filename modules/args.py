@@ -4,7 +4,7 @@
 
 import argparse
 
-parser = argparse.ArgumentParser(description="1930 文档构建器。")
+parser = argparse.ArgumentParser(description="PCL 1930 文档构建器。")
 parser.add_argument(
     "input",
     nargs="?",
@@ -27,5 +27,17 @@ parser.add_argument(
     help="网络请求的超时时间（秒）。默认为 10 秒。",
     type=int,
     default=10,
+)
+parser.add_argument(
+    "-p",
+    "--proxy",
+    help="请求 GitHub 时的代理服务器及端口。",
+    type=str,
+    default="github.com:443",
+)
+parser.add_argument(
+    "--ssl-no-revoke",
+    help="请求服务器时，不校验 SSL 证书。",
+    action="store_true",
 )
 args = parser.parse_args()

@@ -3,14 +3,15 @@ Markdown 文件。
 """
 
 import re
-from typing import Never, Optional
-from modules.base import debug
-
-import json
-import time
-from enum import Enum
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import markdown
+import requests
+from urllib3.exceptions import InsecureRequestWarning
+
+from modules.base import debug
+from modules.ref_parser import RefParser
 
 CATEGORY = {
     "Minecraft": "Minecraft 常见问题",
@@ -108,12 +109,18 @@ class Markdown:
                         debug("Markdown 表正文开始")
                         continue
                     result[0] = (
-                        markdown.Markdown(output_format="html").convert(result[0])
+                        markdown.Markdown(output_format="html")
+                        .convert(result[0])
+                        .replace("<p>", "")
+                        .replace("</p>", "")
                         if result[0]
                         else None
                     )
                     result[1] = (
-                        markdown.Markdown(output_format="html").convert(result[1])
+                        markdown.Markdown(output_format="html")
+                        .convert(result[1])
+                        .replace("<p>", "")
+                        .replace("</p>", "")
                         if result[1]
                         else None
                     )
@@ -125,6 +132,8 @@ class Markdown:
         转为 Json 文件。
         """
         table = {}
+        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+        executor = ThreadPoolExecutor(max_workers=15)
         for line in self:
             debug(f"加载的 Markdown 表格行：{line}")
             if not line:
@@ -133,13 +142,17 @@ class Markdown:
                 continue
             if self.category not in table or table[self.category] is None:
                 table[self.category] = []
-            table[self.category].append(
+            executor.submit(
+                table[self.category].append,
                 {
                     "catg": self.category,
                     "title": re.sub(r"<.*?>", "", line[0]),  # 去除格式
                     "q": line[0],
                     "a": line[1] if len(line) > 1 else "",
-                    "ref": line[2] if len(line) > 2 else "",
-                }
+                    "ref": RefParser(
+                        line[2] if len(line) > 2 and line[2] else ""
+                    ).parse(),
+                },
             )
+        executor.shutdown(wait=True)
         return table

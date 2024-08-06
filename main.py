@@ -3,13 +3,15 @@
 """
 
 import json
-from pathlib import Path
-from modules.markdown import Markdown
+from modules.markdown_lib import Markdown
 from modules.args import args
-from modules.base import log, debug, read
+from modules.base import log, read
+
 
 log(f"开始构建文档：源 {args.input}")
-content = read(args.input)
+if args.ssl_no_revoke:
+    log("警告：您禁用了 SSL 证书验证，这可能导致安全问题。", "WARN")
+content = read(args.input.replace("github.com", args.proxy))
 result = Markdown(content).to_json()
 
 with open(args.output, "w", encoding="utf-8") as f:
